@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>لوحة تحكم المضيف</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: "Segoe UI", Tahoma, Arial, sans-serif; background: #0c1226; color: #eef1ff; padding: 18px; }
+    .wrap { max-width: 640px; margin: 0 auto; display: grid; gap: 14px; }
+    h1 { font-size: 22px; margin: 4px 0 0; }
+    .card { background: #141c3a; border: 1px solid #27325f; border-radius: 14px; padding: 16px; }
+    .card h2 { margin: 0 0 10px; font-size: 16px; color: #ffd54a; }
+    label { display: block; font-size: 14px; margin: 8px 0 4px; opacity: .85; }
+    input, select { width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid #36447f; background: #0c1226; color: #fff; font-size: 16px; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; }
+    .row > * { flex: 1; }
+    button { padding: 11px 14px; border: 0; border-radius: 10px; font-size: 15px; font-weight: 700; cursor: pointer; color: #fff; background: #2f6bff; }
+    button.green { background: #1e9e5a; }
+    button.red { background: #d3304a; }
+    button.gray { background: #3a4570; }
+    button:hover { filter: brightness(1.12); }
+    .status { display: inline-block; padding: 4px 12px; border-radius: 999px; font-size: 14px; font-weight: 700; background: #3a4570; }
+    .status.connected { background: #1e9e5a; }
+    .status.connecting { background: #b8860b; }
+    .status.error, .status.disconnected { background: #d3304a; }
+    .check { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+    .check input { width: auto; }
+    .small { font-size: 13px; opacity: .75; line-height: 1.7; }
+    code { background: #0c1226; padding: 2px 6px; border-radius: 6px; direction: ltr; display: inline-block; }
+    #login { display: none; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🎛 لوحة تحكم المضيف</h1>
+
+  <div class="card" id="login">
+    <h2>تسجيل الدخول</h2>
+    <label>كلمة مرور المضيف</label>
+    <input id="pw" type="password" placeholder="HOST_PASSWORD">
+    <div style="margin-top:10px"><button id="btnLogin">دخول</button> <span id="loginMsg" class="small"></span></div>
+  </div>
+
+  <div id="panel" style="display:none; gap:14px; grid-template-columns: 1fr;">
+    <div class="card">
+      <h2>1) ربط البث</h2>
+      <label>اسم حساب تيك توك (بدون @) — يجب أن يكون البث مباشراً الآن</label>
+      <input id="user" placeholder="username" dir="ltr" autocomplete="off">
+      <div class="row" style="margin-top:10px">
+        <button id="btnConnect" class="green">اتصال</button>
+        <button id="btnDisconnect" class="gray">قطع الاتصال</button>
+      </div>
+      <p>الحالة: <span id="status" class="status">غير متصل</span> <span id="statusMsg" class="small"></span></p>
+    </div>
+
+    <div class="card">
+      <h2>2) إعدادات السباق</h2>
+      <label>مدة السباق</label>
+      <select id="duration">
+        <option value="120">دقيقتان</option>
+        <option value="180">3 دقائق</option>
+        <option value="300">5 دقائق</option>
+        <option value="0">مفتوح (حتى يقطع عداء خط النهاية)</option>
+      </select>
+      <div class="check"><input type="checkbox" id="autoStart"><label style="margin:0">بدء تلقائي عند اكتمال 10 متسابقين</label></div>
+      <div class="check"><input type="checkbox" id="autoRestart"><label style="margin:0">جولة جديدة تلقائياً بعد عرض النتائج</label></div>
+      <div class="row" style="margin-top:14px">
+        <button id="btnStart" class="green">▶ ابدأ السباق الآن</button>
+        <button id="btnReset" class="red">⟲ إعادة ضبط / جولة جديدة</button>
+      </div>
+      <p class="small">الحالة الحالية: <b id="phase">-</b> — المتسابقون: <b id="cnt">0</b>/10</p>
+    </div>
+
+    <div class="card">
+      <h2>3) رابط شاشة اللعبة (Browser Source)</h2>
+      <p class="small">أضف هذا الرابط في TikTok LIVE Studio كـ <b>Browser Source / Web Page</b> بحجم 1080×1920:</p>
+      <p><code id="gameUrl"></code></p>
+    </div>
+
+    <div class="card">
+      <h2>🧪 اختبار بدون بث (للمضيف فقط)</h2>
+      <label>اسم مستخدم تجريبي</label>
+      <input id="tid" value="tester1" dir="ltr">
+      <div class="row" style="margin-top:10px">
+        <button id="tLike" class="gray">❤ لايكات (15)</button>
+        <button id="tGift" class="gray">🎁 هدية 100💎</button>
+        <button id="tGift2" class="gray">🚀 هدية 1000💎</button>
+      </div>
+      <p class="small">هذه الأزرار تظهر هنا فقط ولا تظهر على شاشة اللعبة.</p>
+    </div>
+  </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+  const socket = io();
+  const $ = (id) => document.getElementById(id);
+  const phaseNames = { waiting: 'انتظار المتسابقين', countdown: 'عد تنازلي', running: 'السباق جارٍ', finished: 'انتهى السباق' };
+  const statusNames = { idle: 'غير متصل', connecting: 'جاري الاتصال…', connected: 'متصل ✔', disconnected: 'انقطع', error: 'خطأ' };
+
+  $('gameUrl').textContent = location.origin + '/';
+
+  function showPanel(on) {
+    $('login').style.display = on ? 'none' : 'block';
+    $('panel').style.display = on ? 'grid' : 'none';
+  }
+
+  socket.on('hello', (h) => showPanel(h.isHost));
+  $('btnLogin').onclick = () => {
+    socket.emit('host:login', $('pw').value, (res) => {
+      if (res.ok) showPanel(true); else $('loginMsg').textContent = 'كلمة المرور غير صحيحة';
+    });
+  };
+
+  socket.on('conn', (c) => {
+    const el = $('status');
+    el.className = 'status ' + c.state;
+    el.textContent = statusNames[c.state] || c.state;
+    $('statusMsg').textContent = c.message || (c.username ? '@' + c.username : '');
+    if (c.username && document.activeElement !== $('user')) $('user').value = c.username;
+  });
+
+  socket.on('settings', (s) => {
+    $('duration').value = String(s.duration);
+    $('autoStart').checked = s.autoStart;
+    $('autoRestart').checked = s.autoRestart;
+  });
+
+  socket.on('state', (st) => {
+    $('phase').textContent = phaseNames[st.phase] || st.phase;
+    $('cnt').textContent = st.racers.length;
+  });
+
+  $('btnConnect').onclick = () => socket.emit('host:connect', $('user').value.trim());
+  $('btnDisconnect').onclick = () => socket.emit('host:disconnect');
+  $('btnStart').onclick = () => socket.emit('host:start');
+  $('btnReset').onclick = () => socket.emit('host:reset');
+
+  const sendSettings = () => socket.emit('host:settings', {
+    duration: Number($('duration').value),
+    autoStart: $('autoStart').checked,
+    autoRestart: $('autoRestart').checked,
+  });
+  $('duration').onchange = sendSettings;
+  $('autoStart').onchange = sendSettings;
+  $('autoRestart').onchange = sendSettings;
+
+  $('tLike').onclick = () => socket.emit('host:testLike', { id: $('tid').value, count: 15 });
+  $('tGift').onclick = () => socket.emit('host:testGift', { id: $('tid').value, diamonds: 100 });
+  $('tGift2').onclick = () => socket.emit('host:testGift', { id: $('tid').value, diamonds: 1000 });
+</script>
+</body>
+</html>
